@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VOSTOK — Search for the Emperor's Grave</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Bebas+Neue&display=swap');
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+  html, body {
+    background:#000008; overflow:hidden;
+    height:100vh; width:100vw;
+    font-family:'Space Mono',monospace; cursor:none;
+  }
+  #canvas { position:fixed; top:0; left:0; width:100%; height:100%; z-index:1; }
+
+  #cursor {
+    position:fixed; width:6px; height:6px; background:#e8e4ff;
+    border-radius:50%; pointer-events:none; z-index:1000;
+    transform:translate(-50%,-50%);
+  }
+  #cursor-ring {
+    position:fixed; width:26px; height:26px;
+    border:1px solid rgba(232,228,255,0.3); border-radius:50%;
+    pointer-events:none; z-index:999; transform:translate(-50%,-50%);
+    transition:left 0.07s ease, top 0.07s ease;
+  }
+
+  #band-name {
+    position:fixed; top:28px; left:50%; transform:translateX(-50%);
+    z-index:100; font-family:'Bebas Neue',sans-serif; font-size:0.7rem;
+    letter-spacing:0.6em; color:rgba(232,228,255,0.22); pointer-events:none; white-space:nowrap;
+  }
+  #album-sub {
+    position:fixed; top:48px; left:50%; transform:translateX(-50%);
+    z-index:100; font-size:0.35rem; letter-spacing:0.28em;
+    color:rgba(232,228,255,0.1); pointer-events:none; white-space:nowrap; text-transform:uppercase;
+  }
+
+  #song-info {
+    position:fixed; bottom:48px; left:50%; transform:translateX(-50%);
+    z-index:100; text-align:center; pointer-events:none; white-space:nowrap;
+  }
+  #song-num {
+    font-size:0.45rem; letter-spacing:0.35em; color:rgba(232,228,255,0.28);
+    margin-bottom:8px; opacity:0; transition:opacity 0.6s;
+  }
+  #song-title {
+    font-family:'Bebas Neue',sans-serif;
+    font-size:clamp(1.6rem,4.5vw,3.8rem);
+    color:#e8e4ff; letter-spacing:0.1em; line-height:1;
+    opacity:0; transform:translateY(12px);
+    transition:opacity 0.65s, transform 0.65s;
+  }
+  #song-info.show #song-num,
+  #song-info.show #song-title { opacity:1; transform:translateY(0); }
+
+  #dot-nav {
+    position:fixed; left:28px; top:50%; transform:translateY(-50%);
+    z-index:100; display:flex; flex-direction:column; gap:11px;
+  }
+  .dot {
+    width:5px; height:5px; border-radius:50%;
+    background:rgba(232,228,255,0.12); cursor:pointer;
+    pointer-events:all; transition:all 0.3s ease;
+  }
+  .dot.active { transform:scale(2.2); }
+  .dot.past   { background:rgba(232,228,255,0.28); }
+
+  #scroll-hint {
+    position:fixed; right:32px; top:50%; transform:translateY(-50%);
+    z-index:100; display:flex; flex-direction:column; align-items:center; gap:8px;
+    opacity:0; transition:opacity 1.2s; pointer-events:none;
+  }
+  #scroll-hint span { font-size:0.38rem; letter-spacing:0.3em; color:rgba(232,228,255,0.35); writing-mode:vertical-rl; }
+  #scroll-hint .ln { width:1px; height:32px; background:linear-gradient(to bottom,transparent,rgba(232,228,255,0.35)); animation:lp 2s ease-in-out infinite; }
+  @keyframes lp { 0%,100%{opacity:0.2;} 50%{opacity:0.9;} }
+
+  #now-playing {
+    position:fixed; top:28px; right:32px; z-index:100;
+    display:flex; align-items:center; gap:8px;
+    opacity:0; transition:opacity 0.5s; pointer-events:none;
+  }
+  #now-playing.on { opacity:1; }
+  #now-playing span { font-size:0.38rem; letter-spacing:0.25em; color:rgba(232,228,255,0.35); }
+  .bars { display:flex; align-items:flex-end; gap:2px; height:10px; }
+  .bar { width:2px; border-radius:1px; background:#7b5ea7; animation:ba 0.85s ease-in-out infinite; }
+  .bar:nth-child(1){height:3px;animation-delay:0s;}
+  .bar:nth-child(2){height:9px;animation-delay:0.17s;}
+  .bar:nth-child(3){height:5px;animation-delay:0.33s;}
+  .bar:nth-child(4){height:10px;animation-delay:0.09s;}
+  @keyframes ba { 0%,100%{transform:scaleY(0.3);} 50%{transform:scaleY(1);} }
+
+  #bc-players {
+    position:fixed; left:-9999px; top:-9999px;
+    width:1px; height:1px; overflow:hidden; opacity:0; pointer-events:none;
+  }
+  #tip {
+    position:fixed; bottom:16px; left:50%; transform:translateX(-50%);
+    z-index:200; font-size:0.35rem; letter-spacing:0.22em;
+    color:rgba(232,228,255,0.1); pointer-events:none; white-space:nowrap;
+  }
+
+  /* Splash screen */
+  #splash {
+    position:fixed; inset:0; z-index:500;
+    background:#000008;
+    display:flex; align-items:center; justify-content:center;
+    transition:opacity 1.2s ease;
+  }
+  #splash.hide { opacity:0; pointer-events:none; }
+  #splash-inner { text-align:center; }
+  #splash-band {
+    font-family:'Bebas Neue',sans-serif; font-size:clamp(3rem,8vw,7rem);
+    letter-spacing:0.5em; color:#e8e4ff;
+    text-shadow:0 0 60px rgba(140,68,235,0.6);
+    margin-bottom:8px;
+  }
+  #splash-album {
+    font-size:0.55rem; letter-spacing:0.35em;
+    color:rgba(232,228,255,0.35); margin-bottom:48px; text-transform:uppercase;
+  }
+  #splash-btn {
+    background:none; border:1px solid rgba(232,228,255,0.3);
+    color:#e8e4ff; font-family:'Space Mono',monospace;
+    font-size:0.6rem; letter-spacing:0.4em;
+    padding:14px 36px; cursor:pointer;
+    transition:all 0.3s ease;
+  }
+  #splash-btn:hover {
+    background:rgba(140,68,235,0.2);
+    border-color:rgba(140,68,235,0.8);
+    box-shadow:0 0 24px rgba(140,68,235,0.4);
+  }
+  #splash-sub {
+    font-size:0.38rem; letter-spacing:0.25em;
+    color:rgba(232,228,255,0.18); margin-top:20px; text-transform:uppercase;
+  }
+
+  /* Docked Bandcamp player */
+  #bc-dock {
+    position:fixed; bottom:0; left:50%; transform:translateX(-50%);
+    z-index:200; width:min(500px, 100vw);
+    opacity:0; transition:opacity 0.8s ease;
+  }
+  #bc-dock.show { opacity:1; }
+</style>
+</head>
+<body>
+
+<canvas id="canvas"></canvas>
+<div id="cursor"></div>
+<div id="cursor-ring"></div>
+
+<div id="band-name">V O S T O K</div>
+<div id="album-sub">Search for the Emperor's Grave</div>
+
+<div id="now-playing">
+  <div class="bars"><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
+  <span>TRANSMITTING</span>
+</div>
+
+<div id="song-info">
+  <div id="song-num">01 / 08</div>
+  <div id="song-title">FALLEN LUCIFER</div>
+</div>
+
+<div id="dot-nav"></div>
+
+<div id="scroll-hint">
+  <div class="ln"></div>
+  <span>SCROLL</span>
+</div>
+
+<!-- Splash screen -->
+<div id="splash">
+  <div id="splash-inner">
+    <div id="splash-band">VOSTOK</div>
+    <div id="splash-album">Search for the Emperor's Grave</div>
+    <button id="splash-btn">BEGIN TRANSMISSION</button>
+    <div id="splash-sub">scroll to travel between songs</div>
+  </div>
+</div>
+
+<!-- Docked Bandcamp player — single iframe, src swapped per song -->
+<div id="bc-dock">
+  <iframe id="bc-player" style="border:0;width:100%;height:42px;"
+    src="about:blank" seamless allow="autoplay *"></iframe>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ─────────────────────────────────────────────────────────────
+//  VOSTOK  ·  Search for the Emperor's Grave
+// ─────────────────────────────────────────────────────────────
+
+const SONGS = [
+  { title:"FALLEN LUCIFER",           color:[0.55,0.28,0.92], accent:"#8c44eb" },
+  { title:"LOOK AT THAT ROCKET GO!",  color:[1.00,0.52,0.12], accent:"#ff8520" },
+  { title:"HYPERSPACE",               color:[0.18,0.72,1.00], accent:"#2db8ff" },
+  { title:"SIANARA",                  color:[0.85,0.18,0.42], accent:"#d92e6b" },
+  { title:"ARISE",                    color:[0.25,0.88,0.52], accent:"#40e085" },
+  { title:"ESCAPE POD",               color:[0.88,0.82,0.18], accent:"#e0d12e" },
+  { title:"LIGHT UP THE SKY",         color:[0.18,0.55,1.00], accent:"#2e8cff" },
+  { title:"THOR",                     color:[1.00,0.32,0.18], accent:"#ff512e" },
+];
+
+// ── state ──
+let current = 0, isTransitioning = false, scrollAccum = 0;
+const THRESH = 270;
+
+// ── renderer ──
+const canvas = document.getElementById('canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000008, 1);
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 500);
+camera.position.z = 5;
+
+// ── stars ──
+const SC = 2200, sb = new Float32Array(SC*3), ss = new Float32Array(SC);
+for (let i=0;i<SC;i++){
+  sb[i*3]  =(Math.random()-0.5)*110; sb[i*3+1]=(Math.random()-0.5)*110;
+  sb[i*3+2]=-8-Math.random()*70;    ss[i]=Math.random()*1.4+0.3;
+}
+const sGeo = new THREE.BufferGeometry();
+sGeo.setAttribute('position', new THREE.BufferAttribute(sb,3));
+sGeo.setAttribute('sz',       new THREE.BufferAttribute(ss,1));
+const sMat = new THREE.ShaderMaterial({
+  uniforms:{ uT:{value:0} },
+  vertexShader:`
+    attribute float sz; uniform float uT; varying float vA;
+    void main(){
+      vA=0.2+0.18*sin(uT*0.55+position.x*0.25+position.y*0.18);
+      vec4 mv=modelViewMatrix*vec4(position,1.0);
+      gl_PointSize=sz*(180.0/-mv.z); gl_Position=projectionMatrix*mv;
+    }`,
+  fragmentShader:`
+    varying float vA;
+    void main(){
+      float d=distance(gl_PointCoord,vec2(0.5)); if(d>0.5)discard;
+      gl_FragColor=vec4(0.87,0.85,1.0, pow(1.0-d*2.0,1.8)*vA);
+    }`,
+  transparent:true, depthWrite:false, blending:THREE.NormalBlending,
+});
+scene.add(new THREE.Points(sGeo, sMat));
+
+// ── particles ──
+const PC = 5000;
+const pGeo = new THREE.BufferGeometry();
+let _home=new Float32Array(PC*3), _exp=new Float32Array(PC*3),
+    _col =new Float32Array(PC*3), _sz =new Float32Array(PC);
+
+function buildSong(idx){
+  const [r,g,b]=SONGS[idx].color;
+  for(let i=0;i<PC;i++){
+    const ring  = Math.floor(i/100);
+    const angle = (i%100)/100*Math.PI*2 + ring*0.18;
+    const rad   = 0.32 + ring*0.046 + (Math.random()-0.5)*0.028;
+    _home[i*3]  = Math.cos(angle)*rad + (Math.random()-0.5)*0.035;
+    _home[i*3+1]= Math.sin(angle)*rad + (Math.random()-0.5)*0.035;
+    _home[i*3+2]= (Math.random()-0.5)*0.10;
+
+    const th=Math.random()*Math.PI*2, ph=Math.acos(2*Math.random()-1), sp=2.2+Math.random()*5.5;
+    _exp[i*3]  =Math.sin(ph)*Math.cos(th)*sp;
+    _exp[i*3+1]=Math.sin(ph)*Math.sin(th)*sp;
+    _exp[i*3+2]=Math.cos(ph)*sp*0.45;
+
+    _col[i*3]  =Math.min(Math.max(r+(Math.random()-0.5)*0.10,0.04),0.90);
+    _col[i*3+1]=Math.min(Math.max(g+(Math.random()-0.5)*0.10,0.04),0.90);
+    _col[i*3+2]=Math.min(Math.max(b+(Math.random()-0.5)*0.10,0.04),0.90);
+
+    _sz[i]=Math.random()*1.1+0.3;
+  }
+  pGeo.setAttribute('position', new THREE.BufferAttribute(_home.slice(),3));
+  pGeo.setAttribute('aHome',    new THREE.BufferAttribute(_home.slice(),3));
+  pGeo.setAttribute('aExp',     new THREE.BufferAttribute(_exp.slice(), 3));
+  pGeo.setAttribute('aCol',     new THREE.BufferAttribute(_col.slice(), 3));
+  pGeo.setAttribute('aSz',      new THREE.BufferAttribute(_sz.slice(),  1));
+}
+
+const pMat = new THREE.ShaderMaterial({
+  uniforms:{ uP:{value:0.0}, uT:{value:0.0} },
+  vertexShader:`
+    attribute vec3 aHome; attribute vec3 aExp; attribute vec3 aCol; attribute float aSz;
+    uniform float uP, uT;
+    varying vec3 vC; varying float vA;
+
+    float eio(float t){ return t<0.5?4.*t*t*t:1.-pow(-2.*t+2.,3.)/2.; }
+
+    void main(){
+      float p=eio(clamp(uP,0.0,1.0));
+      float sw=p*1.1; float c=cos(sw); float s=sin(sw);
+      vec3 swirl=vec3(aHome.x*c-aHome.y*s, aHome.x*s+aHome.y*c, aHome.z);
+      vec3 pos=mix(swirl, aHome+aExp*p, p);
+      float br=sin(uT*1.3+aHome.x*5.5+aHome.y*3.8)*0.007*(1.0-p);
+      pos+=vec3(br,br*0.5,0.0);
+      vC=aCol;
+      vA=(1.0-p*0.65)*(0.65+0.32*sin(uT*0.85+length(aHome)*4.5));
+      vec4 mv=modelViewMatrix*vec4(pos,1.0);
+      gl_PointSize=aSz*(1.0+p*2.2)*(110.0/-mv.z);
+      gl_Position=projectionMatrix*mv;
+    }`,
+  fragmentShader:`
+    varying vec3 vC; varying float vA;
+    void main(){
+      float d=distance(gl_PointCoord,vec2(0.5)); if(d>0.5)discard;
+      float a=pow(1.0-d*2.0,2.0)*vA;
+      gl_FragColor=vec4(vC,a);
+    }`,
+  transparent:true, depthWrite:false, blending:THREE.NormalBlending,
+});
+
+buildSong(0);
+const particles = new THREE.Points(pGeo, pMat);
+scene.add(particles);
+
+// ── orb + ring ──
+const orbM = new THREE.MeshBasicMaterial({ color:new THREE.Color(...SONGS[0].color), transparent:true, opacity:0.07 });
+const orb  = new THREE.Mesh(new THREE.SphereGeometry(0.13,24,24), orbM);
+scene.add(orb);
+
+const rM  = new THREE.MeshBasicMaterial({ color:new THREE.Color(...SONGS[0].color), transparent:true, opacity:0.28, side:THREE.DoubleSide });
+const ring = new THREE.Mesh(new THREE.RingGeometry(0.17,0.19,64), rM);
+scene.add(ring);
+
+// ── dots ──
+const dotNav = document.getElementById('dot-nav');
+SONGS.forEach((s,i)=>{
+  const d=document.createElement('div');
+  d.className='dot'+(i===0?' active':'');
+  d.style.color=s.accent;
+  if(i===0) d.style.background=s.accent;
+  d.addEventListener('click',()=>{ if(!isTransitioning) go(i); });
+  dotNav.appendChild(d);
+});
+
+function refreshDots(idx){
+  dotNav.querySelectorAll('.dot').forEach((d,i)=>{
+    d.className='dot'; d.style.background='';
+    if(i<idx){ d.classList.add('past'); d.style.background='rgba(232,228,255,0.25)'; }
+    if(i===idx){ d.classList.add('active'); d.style.background=SONGS[idx].accent; }
+  });
+}
+
+function refreshUI(idx){
+  const info=document.getElementById('song-info');
+  info.classList.remove('show');
+  setTimeout(()=>{
+    document.getElementById('song-title').textContent=SONGS[idx].title;
+    document.getElementById('song-title').style.textShadow=
+      `0 0 28px ${SONGS[idx].accent}77, 0 0 55px ${SONGS[idx].accent}33`;
+    document.getElementById('song-num').textContent=
+      String(idx+1).padStart(2,'0')+' / '+String(SONGS.length).padStart(2,'0');
+    info.classList.add('show');
+  },220);
+  refreshDots(idx);
+}
+
+// ── audio track IDs ──
+const TRACK_IDS = ['3014787955','1874307260','2493191556','2621159985','907514841','794001898','3845358469','206734368'];
+
+function playTrack(idx){
+  const dock = document.getElementById('bc-dock');
+  const player = document.getElementById('bc-player');
+  const tid = TRACK_IDS[idx];
+  const accent = SONGS[idx].accent.replace('#','');
+  player.src = `https://bandcamp.com/EmbeddedPlayer/album=1441241923/size=small/bgcol=000000/linkcol=${accent}/track=${tid}/autoplay=true/transparent=true/`;
+  dock.classList.add('show');
+}
+
+// ── transition ──
+function go(next){
+  if(isTransitioning||next===current) return;
+  isTransitioning=true;
+
+  tween(1.0, 1050, ()=>{
+    current=next;
+    buildSong(current);
+    orbM.color.setRGB(...SONGS[current].color);
+    rM.color.setRGB(...SONGS[current].color);
+    refreshUI(current);
+    playTrack(current);
+    document.getElementById('now-playing').classList.add('on');
+    tween(0.0, 1150, ()=>{ isTransitioning=false; scrollAccum=0; });
+  });
+}
+
+function tween(target, dur, cb){
+  const from=pMat.uniforms.uP.value, t0=performance.now();
+  (function step(now){
+    const t=Math.min((now-t0)/dur,1);
+    pMat.uniforms.uP.value=from+(target-from)*(t<0.5?2*t*t:-1+(4-2*t)*t);
+    t<1 ? requestAnimationFrame(step) : (pMat.uniforms.uP.value=target, cb&&cb());
+  })(t0);
+}
+
+// ── scroll ──
+window.addEventListener('wheel', e=>{
+  e.preventDefault();
+  if(isTransitioning) return;
+  scrollAccum+=e.deltaY;
+  pMat.uniforms.uP.value=Math.min(Math.abs(scrollAccum)/THRESH, 0.55);
+  if(Math.abs(scrollAccum)>=THRESH){
+    scrollAccum=0;
+    go((current+(e.deltaY>0?1:-1)+SONGS.length)%SONGS.length);
+  }
+},{passive:false});
+
+let ty=0;
+window.addEventListener('touchstart',e=>{ty=e.touches[0].clientY;});
+window.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  if(isTransitioning) return;
+  const dy=ty-e.touches[0].clientY; ty=e.touches[0].clientY;
+  scrollAccum+=dy*2.2;
+  pMat.uniforms.uP.value=Math.min(Math.abs(scrollAccum)/THRESH,0.55);
+  if(Math.abs(scrollAccum)>=THRESH){
+    scrollAccum=0;
+    go((current+(dy>0?1:-1)+SONGS.length)%SONGS.length);
+  }
+},{passive:false});
+
+window.addEventListener('keydown',e=>{
+  if(isTransitioning) return;
+  if(e.key==='ArrowDown'||e.key==='ArrowRight') go((current+1)%SONGS.length);
+  if(e.key==='ArrowUp'||e.key==='ArrowLeft')   go((current-1+SONGS.length)%SONGS.length);
+});
+
+// ── mouse ──
+let mx=0,my=0,rx=0,ry=0;
+window.addEventListener('mousemove',e=>{
+  mx=(e.clientX/window.innerWidth-0.5)*2;
+  my=(e.clientY/window.innerHeight-0.5)*2;
+  document.getElementById('cursor').style.left=e.clientX+'px';
+  document.getElementById('cursor').style.top=e.clientY+'px';
+  document.getElementById('cursor-ring').style.left=e.clientX+'px';
+  document.getElementById('cursor-ring').style.top=e.clientY+'px';
+});
+
+// ── resize ──
+window.addEventListener('resize',()=>{
+  camera.aspect=window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth,window.innerHeight);
+});
+
+// ── loop ──
+const clock = new THREE.Clock();
+function animate(){
+  requestAnimationFrame(animate);
+  const t=clock.getElapsedTime();
+  pMat.uniforms.uT.value=t; sMat.uniforms.uT.value=t;
+
+  // parallax
+  rx+=(mx*0.22-rx)*0.04; ry+=(-my*0.11-ry)*0.04;
+  particles.rotation.y=rx; particles.rotation.x=ry;
+
+  // orb / ring
+  orb.scale.setScalar(1+Math.sin(t*1.9)*0.05);
+  orbM.opacity=0.06+Math.sin(t*1.2)*0.025;
+  ring.rotation.z=t*0.22; ring.rotation.x=0.3+Math.sin(t*0.45)*0.07;
+
+  // spring back scroll preview
+  if(!isTransitioning && scrollAccum!==0){
+    scrollAccum*=0.82;
+    if(Math.abs(scrollAccum)<1.5) scrollAccum=0;
+    pMat.uniforms.uP.value=Math.min(Math.abs(scrollAccum)/THRESH,0.55);
+  }
+
+  renderer.render(scene,camera);
+}
+animate();
+
+// ── init ──
+// ── splash ──
+document.getElementById('splash-btn').addEventListener('click', () => {
+  const splash = document.getElementById('splash');
+  splash.classList.add('hide');
+  setTimeout(() => { splash.style.display = 'none'; }, 1300);
+  // Load track 0 immediately on click — this IS the user gesture
+  playTrack(0);
+  refreshUI(0);
+  document.getElementById('now-playing').classList.add('on');
+  setTimeout(() => { document.getElementById('scroll-hint').style.opacity = '0.65'; }, 800);
+  setTimeout(() => { document.getElementById('scroll-hint').style.opacity = '0'; }, 5500);
+});
+
+// refreshUI called from splash click
+setTimeout(()=>{ document.getElementById('scroll-hint').style.opacity='0'; },5500);
+</script>
+</body>
+</html>
